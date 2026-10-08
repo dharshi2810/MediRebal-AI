@@ -182,20 +182,41 @@ export interface EmergencyRequest {
 
 export interface TransferRequest {
   _id?: string;
+  requester_hospital_id?: string;
+  requester_hospital_name?: string;
+  requested_from_hospital_id?: string;
+  requested_from_hospital_name?: string;
+  target_hospital_id?: string;
+  target_hospital_name?: string;
   from_hospital_id: string;
   from_hospital_name: string;
   to_hospital_id: string;
   to_hospital_name: string;
   resource_type: string;
   quantity: number;
-  priority: 'URGENT' | 'HIGH' | 'MEDIUM';
-  status: 'recommended' | 'requested' | 'accepted' | 'rejected' | 'in_transit' | 'delivered' | 'cancelled';
-  deadline: string;
-  reason: string;
-  ai_justification: string;
+  priority: 'High' | 'Medium' | 'Low' | 'Urgent' | 'URGENT' | 'HIGH' | 'MEDIUM' | string;
+  status:
+    | 'Pending'
+    | 'Accepted'
+    | 'Rejected'
+    | 'In Transit'
+    | 'Delivered'
+    | 'Cancelled'
+    | 'recommended'
+    | 'requested'
+    | 'accepted'
+    | 'rejected'
+    | 'in_transit'
+    | 'delivered'
+    | 'cancelled'
+    | string;
+  requested_on?: string;
+  deadline?: string;
+  reason?: string;
+  ai_justification?: string;
   estimated_transit_time?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface MLPrediction {

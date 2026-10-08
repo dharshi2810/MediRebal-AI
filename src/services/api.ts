@@ -251,10 +251,15 @@ export const api = {
 
   // Cross-Hospital Transfers
   transfers: {
-    get: () =>
-      fetch(`${API_BASE}/transfers`, {
+    get: (params?: { hospitalId?: string; type?: 'sent' | 'received' | 'all' }) => {
+      const query = new URLSearchParams();
+      if (params?.hospitalId) query.append('hospitalId', params.hospitalId);
+      if (params?.type) query.append('type', params.type);
+      const qs = query.toString() ? `?${query.toString()}` : '';
+      return fetch(`${API_BASE}/transfers${qs}`, {
         headers: { ...getAuthHeader() },
-      }).then(handleResponse<TransferRequest[]>),
+      }).then(handleResponse<TransferRequest[]>);
+    },
 
     create: (data: any) =>
       fetch(`${API_BASE}/transfers`, {

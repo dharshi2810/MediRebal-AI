@@ -106,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Center Navigation Links (Desktop) */}
+        {/* Center Navigation Links (Public / Patient Features Only) */}
         <nav className="hidden md:flex items-center gap-1 text-sm font-semibold text-slate-600">
           <button
             onClick={() => onTabChange('home')}
@@ -114,16 +114,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               currentTab === 'home' ? 'text-sky-700 bg-sky-50 font-bold' : 'hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            Find Hospitals
+            Home
           </button>
           <button
-            onClick={() => onTabChange('rebalance')}
-            className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-              currentTab === 'rebalance' ? 'text-sky-700 bg-sky-50 font-bold' : 'hover:text-slate-900 hover:bg-slate-100'
-            }`}
+            onClick={() => {
+              onTabChange('home');
+              const el = document.getElementById('hospitals-directory') || document.getElementById('map-section');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }}
+            className="px-3 py-2 rounded-lg transition cursor-pointer hover:text-slate-900 hover:bg-slate-100"
           >
-            <RotateCcw className="w-4 h-4 text-emerald-600" />
-            <span>AI Rebalance</span>
+            Find Hospitals
           </button>
           <button
             onClick={() => onTabChange('appointments')}
@@ -140,17 +141,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             My Requests
-          </button>
-          <button
-            onClick={() => onTabChange('hospital-dashboard')}
-            className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
-              currentTab === 'hospital-dashboard'
-                ? 'text-[#0f2b48] bg-slate-100 font-bold border border-slate-300'
-                : 'hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Shield className="w-4 h-4 text-[#0f2b48]" />
-            <span>Hospital Admin</span>
           </button>
         </nav>
 

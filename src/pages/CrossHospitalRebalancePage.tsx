@@ -52,24 +52,31 @@ export const CrossHospitalRebalancePage: React.FC = () => {
     setSubmittingId(rec._id!);
     try {
       await api.transfers.create({
+        requester_hospital_id: rec.to_hospital_id,
+        requester_hospital_name: rec.to_hospital_name,
+        requested_from_hospital_id: rec.from_hospital_id,
+        requested_from_hospital_name: rec.from_hospital_name,
+        target_hospital_id: rec.from_hospital_id,
+        target_hospital_name: rec.from_hospital_name,
         from_hospital_id: rec.from_hospital_id,
         from_hospital_name: rec.from_hospital_name,
         to_hospital_id: rec.to_hospital_id,
         to_hospital_name: rec.to_hospital_name,
-        resource_type: rec.resource_type,
+        resource_type: rec.resource_type || 'Oxygen Cylinders',
         quantity: rec.quantity,
-        priority: rec.priority,
+        priority: 'High',
+        status: 'Pending',
         deadline: rec.deadline,
-        reason: rec.reason,
+        reason: rec.reason || `AI Rebalance: ${rec.to_hospital_name} needs ${rec.quantity} units from ${rec.from_hospital_name}`,
         ai_justification: rec.ai_justification,
         estimated_transit_time: rec.estimated_transit_time,
       });
 
-      setNotificationMsg(`Transfer request for ${rec.quantity} units dispatched to ${rec.from_hospital_name}!`);
-      setTimeout(() => setNotificationMsg(''), 4000);
+      setNotificationMsg(`Resource request for ${rec.quantity} ${rec.resource_type || 'Oxygen Cylinders'} created! Appears in ${rec.to_hospital_name} → "My Requests" and ${rec.from_hospital_name} → "Resource Requests".`);
+      setTimeout(() => setNotificationMsg(''), 5000);
       loadRebalanceData();
     } catch (err: any) {
-      alert(err.message || 'Failed to request transfer');
+      alert(err.message || 'Failed to request resource');
     } finally {
       setSubmittingId(null);
     }
@@ -315,7 +322,7 @@ export const CrossHospitalRebalancePage: React.FC = () => {
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>
-                      {submittingId === rec._id ? 'Dispatching...' : 'Dispatch Inter-Hospital Transfer Request'}
+                      {submittingId === rec._id ? 'Sending Request...' : 'Request Resource'}
                     </span>
                   </button>
                 </div>
@@ -388,7 +395,7 @@ export const CrossHospitalRebalancePage: React.FC = () => {
                   <span>Priority: <strong>{t.priority}</strong></span>
                   <span>Deadline: <strong>{t.deadline}</strong></span>
                   <span>Est Transit: <strong>{t.estimated_transit_time}</strong></span>
-                  <span>Logged: <strong>{new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
+                  <span>Logged: <strong>{new Date(t.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong></span>
                 </div>
 
                 {t.ai_justification && (

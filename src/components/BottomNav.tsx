@@ -1,13 +1,9 @@
 import React from 'react';
-import { useAuth } from '../context/AuthContext';
 import {
-  Hospital,
-  RotateCcw,
-  AlertTriangle,
+  Home,
+  MapPin,
   ClipboardList,
   Calendar,
-  LayoutDashboard,
-  User,
 } from 'lucide-react';
 
 interface BottomNavProps {
@@ -21,32 +17,31 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onTabChange,
   onOpenEmergency,
 }) => {
-  const { user } = useAuth();
-  const isHospitalAdmin = user?.role === 'HOSPITAL_ADMIN';
-
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200 px-2 py-1.5 shadow-2xl">
       <div className="grid grid-cols-5 items-center justify-around">
-        {/* Find Hospital */}
+        {/* Home */}
         <button
           onClick={() => onTabChange('home')}
           className={`flex flex-col items-center justify-center py-1 transition cursor-pointer ${
             currentTab === 'home' ? 'text-sky-600 font-bold' : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Hospital className="w-5 h-5" />
-          <span className="text-[10px] mt-0.5">Hospitals</span>
+          <Home className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">Home</span>
         </button>
 
-        {/* AI Rebalance */}
+        {/* Find Hospitals */}
         <button
-          onClick={() => onTabChange('rebalance')}
-          className={`flex flex-col items-center justify-center py-1 transition cursor-pointer ${
-            currentTab === 'rebalance' ? 'text-sky-600 font-bold' : 'text-slate-500 hover:text-slate-800'
-          }`}
+          onClick={() => {
+            onTabChange('home');
+            const el = document.getElementById('hospitals-directory') || document.getElementById('map-section');
+            if (el) el.scrollIntoView({ behavior: 'smooth' });
+          }}
+          className={`flex flex-col items-center justify-center py-1 transition cursor-pointer text-slate-500 hover:text-slate-800`}
         >
-          <RotateCcw className="w-5 h-5" />
-          <span className="text-[10px] mt-0.5">Rebalance</span>
+          <MapPin className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">Hospitals</span>
         </button>
 
         {/* Big Center Emergency Button */}
@@ -60,7 +55,18 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           </button>
         </div>
 
-        {/* Requests */}
+        {/* Appointments */}
+        <button
+          onClick={() => onTabChange('appointments')}
+          className={`flex flex-col items-center justify-center py-1 transition cursor-pointer ${
+            currentTab === 'appointments' ? 'text-sky-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Calendar className="w-5 h-5" />
+          <span className="text-[10px] mt-0.5">Appts</span>
+        </button>
+
+        {/* My Requests */}
         <button
           onClick={() => onTabChange('requests')}
           className={`flex flex-col items-center justify-center py-1 transition cursor-pointer ${
@@ -70,33 +76,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <ClipboardList className="w-5 h-5" />
           <span className="text-[10px] mt-0.5">Requests</span>
         </button>
-
-        {/* Hospital Console or Appointments */}
-        {isHospitalAdmin ? (
-          <button
-            onClick={() => onTabChange('hospital-dashboard')}
-            className={`flex flex-col items-center justify-center py-1 transition cursor-pointer ${
-              currentTab === 'hospital-dashboard'
-                ? 'text-sky-600 font-bold'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <LayoutDashboard className="w-5 h-5" />
-            <span className="text-[10px] mt-0.5">Console</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => onTabChange('appointments')}
-            className={`flex flex-col items-center justify-center py-1 transition cursor-pointer ${
-              currentTab === 'appointments'
-                ? 'text-sky-600 font-bold'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Calendar className="w-5 h-5" />
-            <span className="text-[10px] mt-0.5">Appts</span>
-          </button>
-        )}
       </div>
     </nav>
   );

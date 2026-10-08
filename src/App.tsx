@@ -4,9 +4,10 @@ import { Navbar } from './components/Navbar';
 import { BottomNav } from './components/BottomNav';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PublicHomePage } from './pages/PublicHomePage';
-import { CrossHospitalRebalancePage } from './pages/CrossHospitalRebalancePage';
 import { MyRequestsPage } from './pages/MyRequestsPage';
 import { HospitalDashboardPage } from './pages/HospitalDashboardPage';
+import { HospitalAdminLoginPage } from './components/HospitalAdminLoginPage';
+import { AccessDenied } from './components/AccessDenied';
 import { EmergencyModal } from './components/EmergencyModal';
 import { AppointmentModal } from './components/AppointmentModal';
 import { HospitalDetailsModal } from './components/HospitalDetailsModal';
@@ -15,8 +16,27 @@ import { MongoConnectionBanner } from './components/MongoConnectionBanner';
 import { api } from './services/api';
 import { Hospital } from './types';
 
+function isHospitalAdminPath(path: string, search: string, hash: string): boolean {
+  const p = path.toLowerCase();
+  const s = search.toLowerCase();
+  const h = hash.toLowerCase();
+  return (
+    p.startsWith('/admin') ||
+    p.startsWith('/hospital') ||
+    p.startsWith('/manage-resources') ||
+    s.includes('portal=hospital') ||
+    s.includes('portal=admin') ||
+    s.includes('admin=true') ||
+    h.includes('hospital') ||
+    h.includes('admin')
+  );
+}
+
 function MainApp() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const [isAdminPortal, setIsAdminPortal] = useState<boolean>(() => {
+    return isHospitalAdminPath(window.location.pathname, window.location.search, window.location.hash);
+  });
   const [currentTab, setCurrentTab] = useState<string>('home');
   const [selectedArea, setSelectedArea] = useState<string>('All');
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
@@ -30,12 +50,20 @@ function MainApp() {
   const [initialEmergencyResource, setInitialEmergencyResource] = useState('oxygen');
   const [initialTargetHospitalId, setInitialTargetHospitalId] = useState<string | undefined>(undefined);
 
-  // Auto-switch to hospital dashboard if user logs in as hospital admin
+  // Synchronize browser history / URL changes (e.g. back/forward button or manual URL navigation)
   useEffect(() => {
-    if (user?.role === 'HOSPITAL_ADMIN' && currentTab === 'home') {
-      // Allow user to explore home, or switch to hospital dashboard
-    }
-  }, [user]);
+    const handleLocationChange = () => {
+      const isTargetingAdmin = isHospitalAdminPath(
+        window.location.pathname,
+        window.location.search,
+        window.location.hash
+      );
+      setIsAdminPortal(isTargetingAdmin);
+    };
+
+    window.addEventListener('popstate', handleLocationChange);
+    return () => window.removeEventListener('popstate', handleLocationChange);
+  }, []);
 
   useEffect(() => {
     loadHospitals();
@@ -56,6 +84,17 @@ function MainApp() {
     }
   };
 
+  const navigateToPublic = () => {
+    window.history.pushState(null, '', '/');
+    setIsAdminPortal(false);
+    setCurrentTab('home');
+  };
+
+  const navigateToAdmin = () => {
+    window.history.pushState(null, '', '/hospital-admin');
+    setIsAdminPortal(true);
+  };
+
   const handleOpenEmergency = (resourceType?: string, targetHospitalId?: string) => {
     setInitialEmergencyResource(resourceType || 'oxygen');
     setInitialTargetHospitalId(targetHospitalId);
@@ -66,9 +105,58 @@ function MainApp() {
     setSelectedHospitalForAppt(hosp);
   };
 
+  // =========================================================================
+  // HOSPITAL ADMIN PORTAL (Completely separate from public / patient side)
+  // =========================================================================
+  if (isAdminPortal) {
+    // SECURITY ENFORCEMENT:
+    // A normal patient/public user must NOT be able to access Hospital Admin pages by changing the URL manually.
+    // If a patient tries to open an admin page: Show "Access denied." and redirect them back to patient home.
+    if (user && user.role !== 'HOSPITAL_ADMIN') {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col justify-center">
+          <AccessDenied onRedirect={navigateToPublic} />
+        </div>
+      );
+    }
+
+    // If unauthenticated: Show Dedicated Hospital Administration Login
+    if (!user) {
+      return (
+        <div className="min-h-screen bg-slate-100 flex flex-col justify-center py-10">
+          <HospitalAdminLoginPage
+            onSuccess={() => {
+              // Hospital admin logged in, remain in hospital admin console
+            }}
+            onReturnToPatient={navigateToPublic}
+          />
+        </div>
+      );
+    }
+
+    // Logged in as HOSPITAL_ADMIN: Dedicated Hospital Management Application
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 selection:bg-emerald-600 selection:text-white">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-5">
+          <HospitalDashboardPage
+            onLogout={() => {
+              logout();
+              navigateToPublic();
+            }}
+            onNavigateToPublic={navigateToPublic}
+          />
+        </main>
+        <OfflineIndicator />
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // PUBLIC / PATIENT APPLICATION (Patient view only)
+  // =========================================================================
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-sky-500 selection:text-white">
-      {/* Main Navigation Header */}
+      {/* Public Navigation Header (Patient Features Only) */}
       <Navbar
         currentTab={currentTab}
         onTabChange={setCurrentTab}
@@ -78,7 +166,7 @@ function MainApp() {
         onOpenAuth={() => setAuthModalOpen(true)}
       />
 
-      {/* MongoDB Atlas Connection Banner (shows if not connected) */}
+      {/* MongoDB Atlas Connection Banner */}
       <MongoConnectionBanner onConnected={loadHospitals} />
 
       {/* Main Container */}
@@ -91,19 +179,16 @@ function MainApp() {
             onOpenEmergency={handleOpenEmergency}
             onSelectHospital={(h) => setSelectedHospitalForDetails(h.hospital_id)}
             onBookAppointment={handleOpenAppointment}
+            onOpenHospitalAdmin={navigateToAdmin}
           />
         )}
 
-        {currentTab === 'rebalance' && <CrossHospitalRebalancePage />}
+        {currentTab === 'appointments' && <MyRequestsPage initialTab="appointments" />}
 
-        {currentTab === 'requests' && <MyRequestsPage />}
-
-        {currentTab === 'appointments' && <MyRequestsPage />}
-
-        {currentTab === 'hospital-dashboard' && <HospitalDashboardPage />}
+        {currentTab === 'requests' && <MyRequestsPage initialTab="emergency" />}
       </main>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation (Public Patient Features Only) */}
       <BottomNav
         currentTab={currentTab}
         onTabChange={setCurrentTab}
@@ -132,7 +217,7 @@ function MainApp() {
           onClose={() => setSelectedHospitalForAppt(null)}
           hospital={selectedHospitalForAppt}
           onBooked={() => {
-            setCurrentTab('requests');
+            setCurrentTab('appointments');
           }}
         />
       )}
@@ -152,6 +237,7 @@ function MainApp() {
         />
       )}
 
+      {/* Patient Login & Profile Modal (Strictly Patient) */}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}

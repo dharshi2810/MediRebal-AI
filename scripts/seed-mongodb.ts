@@ -675,7 +675,111 @@ export async function runIdempotentSeed() {
     );
   }
 
-  // 10. Initial Audit Log entry
+  // 10. Idempotent Sample Hospital-to-Hospital Resource Requests (My Requests & Resource Requests)
+  const sampleTransfers = [
+    {
+      requester_hospital_id: 'H001',
+      requester_hospital_name: 'Chennai Central Hospital',
+      requested_from_hospital_id: 'H002',
+      requested_from_hospital_name: 'Anna Nagar Hospital',
+      target_hospital_id: 'H002',
+      target_hospital_name: 'Anna Nagar Hospital',
+      from_hospital_id: 'H002',
+      from_hospital_name: 'Anna Nagar Hospital',
+      to_hospital_id: 'H001',
+      to_hospital_name: 'Chennai Central Hospital',
+      resource_type: 'Oxygen Cylinders',
+      quantity: 20,
+      priority: 'High',
+      status: 'Pending',
+      requested_on: '10 October 2026',
+      deadline: 'Within 2 hours',
+      reason: 'Oxygen reserve below threshold due to high ICU admissions',
+      ai_justification: 'H002 currently holds surplus buffer of +45 cylinders. Rapid 18-minute transit route via EVR Periyar Salai.',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      requester_hospital_id: 'H001',
+      requester_hospital_name: 'Chennai Central Hospital',
+      requested_from_hospital_id: 'H003',
+      requested_from_hospital_name: 'Adyar Hospital',
+      target_hospital_id: 'H003',
+      target_hospital_name: 'Adyar Hospital',
+      from_hospital_id: 'H003',
+      from_hospital_name: 'Adyar Hospital',
+      to_hospital_id: 'H001',
+      to_hospital_name: 'Chennai Central Hospital',
+      resource_type: 'ICU Beds',
+      quantity: 4,
+      priority: 'High',
+      status: 'Accepted',
+      requested_on: '10 October 2026',
+      deadline: 'Within 3 hours',
+      reason: 'Urgent cardiac ICU bed surge',
+      ai_justification: 'H003 has 12 available ICU beds. Confirmed bed sanitization and telemetry equipment ready.',
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      updatedAt: new Date(Date.now() - 1800000).toISOString(),
+    },
+    {
+      requester_hospital_id: 'H001',
+      requester_hospital_name: 'Chennai Central Hospital',
+      requested_from_hospital_id: 'H004',
+      requested_from_hospital_name: 'Velachery Hospital',
+      target_hospital_id: 'H004',
+      target_hospital_name: 'Velachery Hospital',
+      from_hospital_id: 'H004',
+      from_hospital_name: 'Velachery Hospital',
+      to_hospital_id: 'H001',
+      to_hospital_name: 'Chennai Central Hospital',
+      resource_type: 'Ventilators',
+      quantity: 2,
+      priority: 'Urgent',
+      status: 'In Transit',
+      requested_on: '10 October 2026',
+      deadline: 'Within 1 hour',
+      reason: 'Pediatric respiratory support',
+      ai_justification: 'Dispatched via medical transport vehicle TN-07-H-4412. ETA 15 minutes.',
+      createdAt: new Date(Date.now() - 7200000).toISOString(),
+      updatedAt: new Date(Date.now() - 900000).toISOString(),
+    },
+    {
+      requester_hospital_id: 'H002',
+      requester_hospital_name: 'Anna Nagar Hospital',
+      requested_from_hospital_id: 'H001',
+      requested_from_hospital_name: 'Chennai Central Hospital',
+      target_hospital_id: 'H001',
+      target_hospital_name: 'Chennai Central Hospital',
+      from_hospital_id: 'H001',
+      from_hospital_name: 'Chennai Central Hospital',
+      to_hospital_id: 'H002',
+      to_hospital_name: 'Anna Nagar Hospital',
+      resource_type: 'Emergency Beds',
+      quantity: 6,
+      priority: 'High',
+      status: 'Pending',
+      requested_on: '10 October 2026',
+      deadline: 'Within 2 hours',
+      reason: 'Seasonal viral flu triage overflow',
+      ai_justification: 'Surplus triage capacity detected at Chennai Central Hub.',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ];
+
+  for (const tr of sampleTransfers) {
+    await db.collection('transfer_requests').updateOne(
+      {
+        requester_hospital_id: tr.requester_hospital_id,
+        requested_from_hospital_id: tr.requested_from_hospital_id,
+        resource_type: tr.resource_type,
+      },
+      { $set: tr },
+      { upsert: true }
+    );
+  }
+
+  // 11. Initial Audit Log entry
   await db.collection('audit_logs').insertOne({
     user_id: 'system',
     role: 'SYSTEM',
@@ -683,6 +787,7 @@ export async function runIdempotentSeed() {
     details: {
       hospitals: DEMO_HOSPITALS.map((h) => ({ id: h.hospital_id, name: h.name })),
       appointmentsSeeded: sampleAppointments.length,
+      transfersSeeded: sampleTransfers.length,
       timestamp: new Date().toISOString(),
     },
     timestamp: new Date().toISOString(),

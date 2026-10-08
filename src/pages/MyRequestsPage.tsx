@@ -15,12 +15,22 @@ import {
   Building,
 } from 'lucide-react';
 
-export const MyRequestsPage: React.FC = () => {
+interface MyRequestsPageProps {
+  initialTab?: 'emergency' | 'appointments';
+}
+
+export const MyRequestsPage: React.FC<MyRequestsPageProps> = ({ initialTab = 'emergency' }) => {
   const { user } = useAuth();
-  const [tab, setTab] = useState<'emergency' | 'appointments'>('emergency');
+  const [tab, setTab] = useState<'emergency' | 'appointments'>(initialTab);
   const [emergencyRequests, setEmergencyRequests] = useState<EmergencyRequest[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+    }
+  }, [initialTab]);
 
   useEffect(() => {
     loadData();

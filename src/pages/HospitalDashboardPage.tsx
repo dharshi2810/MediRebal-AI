@@ -31,7 +31,20 @@ import {
   Phone,
   ShieldAlert,
   ArrowRightLeft,
+  Send,
+  Clock,
+  Package,
+  RotateCcw,
+  Sparkles,
+  User as UserIcon,
+  Bell,
+  ChevronRight,
+  Filter,
+  Info,
+  Shield,
+  Layers,
 } from 'lucide-react';
+import { CrossHospitalRebalancePage } from './CrossHospitalRebalancePage';
 
 export const HospitalDashboardPage: React.FC = () => {
   const { user } = useAuth();
@@ -41,10 +54,29 @@ export const HospitalDashboardPage: React.FC = () => {
   );
 
   const [activeTab, setActiveTab] = useState<
-    'doctors' | 'nurses' | 'beds' | 'oxygen' | 'ambulances' | 'emergency' | 'appointments' | 'departments'
+    | 'dashboard'
+    | 'resources'
+    | 'appointments'
+    | 'emergency'
+    | 'my-requests'
+    | 'resource-requests'
+    | 'rebalance'
+    | 'notifications'
+    | 'profile'
+    | 'doctors'
+    | 'nurses'
+    | 'beds'
+    | 'oxygen'
+    | 'ambulances'
+    | 'departments'
+  >('dashboard');
+
+  const [resourceSubTab, setResourceSubTab] = useState<
+    'doctors' | 'nurses' | 'beds' | 'oxygen' | 'ambulances' | 'departments'
   >('doctors');
 
   const [hospital, setHospital] = useState<Hospital | null>(null);
+  const [allHospitals, setAllHospitals] = useState<Hospital[]>([]);
   const [beds, setBeds] = useState<BedCategory[]>([]);
   const [resources, setResources] = useState<ResourceItem[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -55,6 +87,16 @@ export const HospitalDashboardPage: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<string>('all');
   const [transfers, setTransfers] = useState<TransferRequest[]>([]);
+  const [myRequestsFilter, setMyRequestsFilter] = useState<string>('all');
+  const [incomingFilter, setIncomingFilter] = useState<string>('all');
+  const [showNewRequestModal, setShowNewRequestModal] = useState(false);
+  const [newRequestForm, setNewRequestForm] = useState({
+    resource_type: 'Oxygen Cylinders',
+    quantity: 20,
+    target_hospital_id: 'H002',
+    priority: 'High',
+    reason: '',
+  });
   const [statusMessage, setStatusMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -113,21 +155,34 @@ export const HospitalDashboardPage: React.FC = () => {
 
   const loadHospitalData = async () => {
     try {
-      const [hospData, bedData, resData, docData, nurseData, deptData, ambData, emData, apptData, transferData] =
-        await Promise.all([
-          api.hospitals.getById(currentHospitalId),
-          api.beds.get(currentHospitalId),
-          api.resources.get(currentHospitalId),
-          api.doctors.get(currentHospitalId),
-          api.nurses.get(currentHospitalId),
-          api.departments.get(currentHospitalId),
-          api.ambulances.get(currentHospitalId),
-          api.emergency.get(),
-          api.appointments.get({ hospitalId: currentHospitalId }),
-          api.transfers.get().catch(() => []),
-        ]);
+      const [
+        hospData,
+        bedData,
+        resData,
+        docData,
+        nurseData,
+        deptData,
+        ambData,
+        emData,
+        apptData,
+        transferData,
+        allHospData,
+      ] = await Promise.all([
+        api.hospitals.getById(currentHospitalId),
+        api.beds.get(currentHospitalId),
+        api.resources.get(currentHospitalId),
+        api.doctors.get(currentHospitalId),
+        api.nurses.get(currentHospitalId),
+        api.departments.get(currentHospitalId),
+        api.ambulances.get(currentHospitalId),
+        api.emergency.get(),
+        api.appointments.get({ hospitalId: currentHospitalId }),
+        api.transfers.get().catch(() => []),
+        api.hospitals.getAll().catch(() => []),
+      ]);
 
       setHospital(hospData);
+      setAllHospitals(allHospData || []);
       setBeds(bedData);
       setResources(resData);
       setDoctors(docData);
@@ -552,6 +607,19 @@ export const HospitalDashboardPage: React.FC = () => {
     });
   }
 
+  // Filter hospital transfers:
+  // "My Requests": Resource requests THIS hospital has sent to other hospitals
+  const myRequests = transfers.filter(
+    (t) => (t.requester_hospital_id || t.to_hospital_id) === currentHospitalId
+  );
+
+  // "Resource Requests": Resource requests RECEIVED from other hospitals
+  const incomingRequests = transfers.filter(
+    (t) =>
+      (t.requested_from_hospital_id || t.from_hospital_id || t.target_hospital_id) === currentHospitalId &&
+      (t.requester_hospital_id || t.to_hospital_id) !== currentHospitalId
+  );
+
   // Hospital Dashboard Summary Counts (Computed live from MongoDB records for this hospital)
   const todayDateStr = new Date().toISOString().split('T')[0];
   const todayApptsCount = appointments.filter(
@@ -573,9 +641,51 @@ export const HospitalDashboardPage: React.FC = () => {
     (a) => (a.status || '').toLowerCase() === 'rejected'
   ).length;
   const emergencyReqsCount = emergencyReqs.length;
-  const resourceReqsCount = transfers.filter(
-    (t) => t.to_hospital_id === currentHospitalId || t.from_hospital_id === currentHospitalId
-  ).length;
+
+  const handleUpdateTransferStatus = async (id: string, status: string) => {
+    try {
+      await api.transfers.update(id, { status });
+      setStatusMessage(`Resource request status updated to "${status}" in MongoDB.`);
+      setTimeout(() => setStatusMessage(''), 4000);
+      loadHospitalData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update resource request');
+    }
+  };
+
+  const handleCreateResourceRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const targetHosp = allHospitals.find((h) => h.hospital_id === newRequestForm.target_hospital_id);
+      await api.transfers.create({
+        requester_hospital_id: currentHospitalId,
+        requester_hospital_name: hospital?.name || currentHospitalId,
+        requested_from_hospital_id: newRequestForm.target_hospital_id,
+        requested_from_hospital_name: targetHosp?.name || newRequestForm.target_hospital_id,
+        target_hospital_id: newRequestForm.target_hospital_id,
+        target_hospital_name: targetHosp?.name || newRequestForm.target_hospital_id,
+        resource_type: newRequestForm.resource_type,
+        quantity: Number(newRequestForm.quantity),
+        priority: newRequestForm.priority,
+        reason: newRequestForm.reason || 'Inter-hospital resource balancing request',
+      });
+      setStatusMessage(
+        `Resource request for ${newRequestForm.quantity} ${newRequestForm.resource_type} sent to ${targetHosp?.name || newRequestForm.target_hospital_id}!`
+      );
+      setTimeout(() => setStatusMessage(''), 5000);
+      setShowNewRequestModal(false);
+      setNewRequestForm({
+        resource_type: 'Oxygen Cylinders',
+        quantity: 20,
+        target_hospital_id: currentHospitalId === 'H001' ? 'H002' : 'H001',
+        priority: 'High',
+        reason: '',
+      });
+      loadHospitalData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to create resource request');
+    }
+  };
 
   return (
     <div className="space-y-6 pb-20 max-w-6xl mx-auto font-sans">
@@ -619,32 +729,94 @@ export const HospitalDashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs (Hospital Admin Spec: Dashboard, Resources, Appointments, Emergency Requests, My Requests, Resource Requests, AI Rebalance, Notifications, Profile) */}
         <div className="pt-4 mt-4 border-t border-slate-700/80 flex overflow-x-auto gap-1 text-xs no-scrollbar">
           {[
-            { id: 'doctors', label: `Doctors (${doctors.length})` },
-            { id: 'nurses', label: `Nurses (${nurses.length})` },
-            { id: 'beds', label: 'Beds' },
-            { id: 'oxygen', label: 'Oxygen' },
-            { id: 'ambulances', label: `Ambulances (${ambulances.length})` },
-            { id: 'emergency', label: `Emergency Requests (${emergencyReqs.length})` },
-            { id: 'appointments', label: `Appointments (${appointments.length})` },
-            { id: 'departments', label: 'Departments' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-3.5 py-2 rounded-lg whitespace-nowrap transition cursor-pointer font-bold ${
-                activeTab === tab.id
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+            { id: 'dashboard', label: 'Dashboard', icon: Activity },
+            { id: 'resources', label: 'Resources', icon: Building },
+            { id: 'appointments', label: `Appointments (${appointments.length})`, icon: Calendar },
+            { id: 'emergency', label: `Emergency Requests (${emergencyReqs.length})`, icon: ShieldAlert },
+            {
+              id: 'my-requests',
+              label: `My Requests (${myRequests.length})`,
+              icon: Send,
+              badge: myRequests.filter((r) => (r.status || '').toLowerCase() === 'pending').length,
+            },
+            {
+              id: 'resource-requests',
+              label: `Resource Requests (${incomingRequests.length})`,
+              icon: ArrowRightLeft,
+              badge: incomingRequests.filter((r) => (r.status || '').toLowerCase() === 'pending').length,
+            },
+            { id: 'rebalance', label: 'AI Rebalance', icon: RotateCcw },
+            { id: 'notifications', label: 'Notifications', icon: Bell },
+            { id: 'profile', label: 'Profile', icon: UserIcon },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isSelected =
+              activeTab === tab.id ||
+              (tab.id === 'resources' &&
+                ['doctors', 'nurses', 'beds', 'oxygen', 'ambulances', 'departments'].includes(activeTab));
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (tab.id === 'resources') {
+                    setActiveTab('resources');
+                  } else {
+                    setActiveTab(tab.id as any);
+                  }
+                }}
+                className={`px-3 py-2 rounded-lg whitespace-nowrap transition cursor-pointer font-bold flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+                {Boolean(tab.badge) && (
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse ml-0.5" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {/* Sub-navigation if Resources tab selected */}
+      {(activeTab === 'resources' ||
+        ['doctors', 'nurses', 'beds', 'oxygen', 'ambulances', 'departments'].includes(activeTab)) && (
+        <div className="bg-white rounded-2xl border border-slate-300 p-2.5 shadow-xs flex overflow-x-auto gap-1.5 text-xs">
+          {[
+            { id: 'doctors', label: `Doctors (${doctors.length})`, icon: Stethoscope },
+            { id: 'nurses', label: `Nurses (${nurses.length})`, icon: Users },
+            { id: 'beds', label: 'Beds', icon: BedDouble },
+            { id: 'oxygen', label: 'Oxygen', icon: Activity },
+            { id: 'ambulances', label: `Ambulances (${ambulances.length})`, icon: Truck },
+            { id: 'departments', label: 'Departments', icon: Building },
+          ].map((sub) => {
+            const isSubSelected =
+              (activeTab === 'resources' && resourceSubTab === sub.id) || activeTab === sub.id;
+            return (
+              <button
+                key={sub.id}
+                onClick={() => {
+                  setActiveTab('resources');
+                  setResourceSubTab(sub.id as any);
+                }}
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  isSubSelected
+                    ? 'bg-[#0f2b48] text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+              >
+                <span>{sub.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Success Notification Banner */}
       {statusMessage && (
@@ -673,7 +845,7 @@ export const HospitalDashboardPage: React.FC = () => {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Today's Appointments */}
           <div
             onClick={() => setActiveTab('appointments')}
@@ -711,22 +883,37 @@ export const HospitalDashboardPage: React.FC = () => {
           >
             <span className="text-rose-800 text-xs block mb-1 font-medium">Emergency Requests</span>
             <strong className="text-2xl text-rose-700 font-extrabold block">{emergencyReqsCount}</strong>
-            <span className="text-[11px] text-rose-600 font-semibold block mt-1">Admissions</span>
+            <span className="text-[11px] text-rose-600 font-semibold block mt-1">Patient Admissions</span>
           </div>
 
-          {/* Resource Requests */}
-          <div className="p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-200 text-center">
+          {/* My Requests (Resource Requests Sent) */}
+          <div
+            onClick={() => setActiveTab('my-requests')}
+            className="p-3.5 bg-violet-50/60 hover:bg-violet-100/60 rounded-xl border border-violet-200 transition cursor-pointer text-center"
+          >
+            <span className="text-violet-800 text-xs block mb-1 font-medium">My Requests</span>
+            <strong className="text-2xl text-violet-700 font-extrabold block">{myRequests.length}</strong>
+            <span className="text-[11px] text-violet-600 font-semibold block mt-1">Sent to Other Hubs</span>
+          </div>
+
+          {/* Resource Requests (Incoming Requests Received) */}
+          <div
+            onClick={() => setActiveTab('resource-requests')}
+            className="p-3.5 bg-indigo-50/60 hover:bg-indigo-100/60 rounded-xl border border-indigo-200 transition cursor-pointer text-center"
+          >
             <span className="text-indigo-800 text-xs block mb-1 font-medium">Resource Requests</span>
-            <strong className="text-2xl text-indigo-700 font-extrabold block">{resourceReqsCount}</strong>
-            <span className="text-[11px] text-indigo-600 font-semibold block mt-1">Cross-Hospital</span>
+            <strong className="text-2xl text-indigo-700 font-extrabold block">{incomingRequests.length}</strong>
+            <span className="text-[11px] text-indigo-600 font-semibold block mt-1">From Other Hospitals</span>
           </div>
         </div>
       </div>
 
       {/* ========================================================= */}
-      {/* SECTION 1: ATTENTION NEEDED */}
+      {/* SECTION 1 & 2: DASHBOARD OVERVIEW */}
       {/* ========================================================= */}
-      <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-3">
+      {activeTab === 'dashboard' && (
+        <>
+          <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-3">
         <div className="flex items-center justify-between border-b border-slate-200 pb-2">
           <h2 className="font-bold text-base text-[#0f2b48] tracking-tight uppercase flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-red-600" />
@@ -866,13 +1053,15 @@ export const HospitalDashboardPage: React.FC = () => {
           </div>
         </div>
       </div>
+      </>
+    )}
 
       {/* ========================================================= */}
       {/* SECTION 3: DETAILED MANAGEMENT PAGES */}
       {/* ========================================================= */}
 
       {/* TAB 1: DOCTOR MANAGEMENT */}
-      {activeTab === 'doctors' && (
+      {(activeTab === 'doctors' || (activeTab === 'resources' && resourceSubTab === 'doctors')) && (
         <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
           <div className="flex items-center justify-between border-b border-slate-200 pb-3">
             <div>
@@ -1123,7 +1312,7 @@ export const HospitalDashboardPage: React.FC = () => {
       )}
 
       {/* TAB 2: NURSE MANAGEMENT */}
-      {activeTab === 'nurses' && (
+      {(activeTab === 'nurses' || (activeTab === 'resources' && resourceSubTab === 'nurses')) && (
         <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
           <div className="flex items-center justify-between border-b border-slate-200 pb-3">
             <div>
@@ -1350,7 +1539,7 @@ export const HospitalDashboardPage: React.FC = () => {
       )}
 
       {/* TAB 3: BED AVAILABILITY */}
-      {activeTab === 'beds' && (
+      {(activeTab === 'beds' || (activeTab === 'resources' && resourceSubTab === 'beds')) && (
         <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
           <div className="border-b border-slate-200 pb-3">
             <h3 className="font-bold text-base text-[#0f2b48]">Bed Inventory Management</h3>
@@ -1440,7 +1629,7 @@ export const HospitalDashboardPage: React.FC = () => {
       )}
 
       {/* TAB 4: OXYGEN AVAILABILITY */}
-      {activeTab === 'oxygen' && (
+      {(activeTab === 'oxygen' || (activeTab === 'resources' && resourceSubTab === 'oxygen')) && (
         <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
           <div className="border-b border-slate-200 pb-3">
             <h3 className="font-bold text-base text-[#0f2b48]">Oxygen Availability Management</h3>
@@ -1506,7 +1695,7 @@ export const HospitalDashboardPage: React.FC = () => {
       )}
 
       {/* TAB 5: AMBULANCE MANAGEMENT */}
-      {activeTab === 'ambulances' && (
+      {(activeTab === 'ambulances' || (activeTab === 'resources' && resourceSubTab === 'ambulances')) && (
         <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
           <div className="flex items-center justify-between border-b border-slate-200 pb-3">
             <div>
@@ -2072,7 +2261,7 @@ export const HospitalDashboardPage: React.FC = () => {
       )}
 
       {/* TAB 8: DEPARTMENTS */}
-      {activeTab === 'departments' && (
+      {(activeTab === 'departments' || (activeTab === 'resources' && resourceSubTab === 'departments')) && (
         <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
           <div className="border-b border-slate-200 pb-3">
             <h3 className="font-bold text-base text-[#0f2b48]">Hospital Departments</h3>
@@ -2119,6 +2308,847 @@ export const HospitalDashboardPage: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB: MY REQUESTS (HOSPITAL-TO-HOSPITAL SENT REQUESTS) */}
+      {/* ========================================================= */}
+      {activeTab === 'my-requests' && (
+        <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-violet-100 text-violet-700">
+                  <Send className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-base text-[#0f2b48]">
+                    My Requests (Sent to Other Hospitals)
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    Resource requests sent by <strong>{hospital?.name || currentHospitalId}</strong> to partner hospitals across Chennai.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowNewRequestModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-violet-700 hover:bg-violet-800 text-white font-extrabold text-xs shadow-md shadow-violet-700/25 flex items-center gap-2 cursor-pointer transition active:scale-95 self-start sm:self-auto"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ New Resource Request</span>
+            </button>
+          </div>
+
+          {/* Simple Explanation Note */}
+          <div className="p-3 bg-violet-50/70 border border-violet-200 rounded-xl text-xs text-violet-900 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-violet-700 flex-shrink-0 mt-0.5" />
+            <div>
+              <strong className="block font-bold">What is &quot;My Requests&quot;?</strong>
+              <p className="text-violet-800 mt-0.5 leading-relaxed">
+                This shows supplies (Oxygen Cylinders, ICU Beds, Ventilators, Emergency Beds, Ambulances) that <strong>this hospital</strong> has requested from other hospitals. Live status changes from partner hospitals automatically update here.
+              </p>
+            </div>
+          </div>
+
+          {/* Status Filter Tabs */}
+          <div className="flex overflow-x-auto gap-1.5 pb-1 text-xs">
+            {[
+              { id: 'all', label: `All (${myRequests.length})` },
+              {
+                id: 'pending',
+                label: `Pending (${myRequests.filter((r) => (r.status || '').toLowerCase() === 'pending').length})`,
+              },
+              {
+                id: 'accepted',
+                label: `Accepted (${myRequests.filter((r) => (r.status || '').toLowerCase() === 'accepted').length})`,
+              },
+              {
+                id: 'in transit',
+                label: `In Transit (${myRequests.filter((r) => (r.status || '').toLowerCase() === 'in transit').length})`,
+              },
+              {
+                id: 'delivered',
+                label: `Delivered (${myRequests.filter((r) => (r.status || '').toLowerCase() === 'delivered').length})`,
+              },
+              {
+                id: 'cancelled',
+                label: `Cancelled (${myRequests.filter((r) => (r.status || '').toLowerCase() === 'cancelled').length})`,
+              },
+              {
+                id: 'rejected',
+                label: `Rejected (${myRequests.filter((r) => (r.status || '').toLowerCase() === 'rejected').length})`,
+              },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setMyRequestsFilter(f.id)}
+                className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                  myRequestsFilter === f.id
+                    ? 'bg-violet-700 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Cards List */}
+          {(() => {
+            const filtered = myRequests.filter((t) => {
+              if (myRequestsFilter === 'all') return true;
+              return (t.status || '').toLowerCase() === myRequestsFilter;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-12 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <span className="text-3xl">📦</span>
+                  <h4 className="font-bold text-slate-800 text-sm">No Resource Requests in this view</h4>
+                  <p className="text-slate-500 text-xs max-w-md mx-auto">
+                    Click <strong>&quot;+ New Resource Request&quot;</strong> or visit <strong>&quot;AI Rebalance&quot;</strong> to request medical resources from partner hospital hubs.
+                  </p>
+                  <button
+                    onClick={() => setShowNewRequestModal(true)}
+                    className="px-4 py-2 bg-violet-700 hover:bg-violet-800 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs inline-flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Send Resource Request</span>
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filtered.map((t) => {
+                  const status = t.status || 'Pending';
+                  const s = status.toLowerCase();
+                  const targetHospName =
+                    t.requested_from_hospital_name ||
+                    t.from_hospital_name ||
+                    t.target_hospital_name ||
+                    'Partner Hospital';
+
+                  return (
+                    <div
+                      key={t._id}
+                      className="bg-white rounded-2xl border border-slate-300 p-4 shadow-xs space-y-3.5 hover:border-violet-400 transition"
+                    >
+                      {/* Top Header: Resource & Status */}
+                      <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-100">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                            RESOURCE
+                          </span>
+                          <h4 className="font-black text-sm text-slate-900 mt-0.5">
+                            {t.resource_type || 'Oxygen Cylinders'}
+                          </h4>
+                        </div>
+
+                        {/* Status Badge */}
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-black capitalize flex items-center gap-1.5 ${
+                            s === 'accepted'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : s === 'in transit'
+                              ? 'bg-sky-100 text-sky-800 border border-sky-300'
+                              : s === 'delivered'
+                              ? 'bg-teal-100 text-teal-800 border border-teal-300'
+                              : s === 'rejected'
+                              ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                              : s === 'cancelled'
+                              ? 'bg-slate-100 text-slate-500 line-through border border-slate-300'
+                              : 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
+                          }`}
+                        >
+                          {s === 'in transit' && <Truck className="w-3.5 h-3.5" />}
+                          {s === 'accepted' && <Check className="w-3.5 h-3.5" />}
+                          {s === 'delivered' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                          <span>{status}</span>
+                        </span>
+                      </div>
+
+                      {/* Card Details Grid */}
+                      <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <div>
+                          <span className="text-slate-500 text-[10px] font-bold block uppercase tracking-wider">
+                            QUANTITY
+                          </span>
+                          <strong className="text-base text-slate-900 font-black">
+                            {t.quantity} Units
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-500 text-[10px] font-bold block uppercase tracking-wider">
+                            PRIORITY
+                          </span>
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] uppercase mt-0.5 ${
+                              (t.priority || '').toUpperCase() === 'URGENT' ||
+                              (t.priority || '').toUpperCase() === 'HIGH'
+                                ? 'bg-red-100 text-red-800 border border-red-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300'
+                            }`}
+                          >
+                            {t.priority || 'High'}
+                          </span>
+                        </div>
+
+                        <div className="col-span-2">
+                          <span className="text-slate-500 text-[10px] font-bold block uppercase tracking-wider">
+                            REQUESTED FROM
+                          </span>
+                          <strong className="text-xs text-slate-800 block mt-0.5">
+                            {targetHospName}
+                          </strong>
+                        </div>
+
+                        <div className="col-span-2">
+                          <span className="text-slate-500 text-[10px] font-bold block uppercase tracking-wider">
+                            REQUESTED ON
+                          </span>
+                          <span className="text-slate-700 font-medium text-xs mt-0.5 block">
+                            {t.requested_on || '10 October 2026'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Plain Language Status Note */}
+                      <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
+                        {s === 'pending' && (
+                          <span className="flex items-center gap-1.5 text-amber-800 font-semibold">
+                            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>Pending approval from {targetHospName}. Awaiting their team response.</span>
+                          </span>
+                        )}
+                        {s === 'accepted' && (
+                          <span className="flex items-center gap-1.5 text-emerald-800 font-semibold">
+                            <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>{targetHospName} ACCEPTED your request! Preparing transport dispatch.</span>
+                          </span>
+                        )}
+                        {s === 'in transit' && (
+                          <span className="flex items-center gap-1.5 text-sky-800 font-semibold">
+                            <Truck className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>Resource in transit from {targetHospName} to our facility.</span>
+                          </span>
+                        )}
+                        {s === 'delivered' && (
+                          <span className="flex items-center gap-1.5 text-teal-800 font-semibold">
+                            <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>Delivered and safely restocked into our hospital inventory.</span>
+                          </span>
+                        )}
+                        {s === 'rejected' && (
+                          <span className="flex items-center gap-1.5 text-rose-800 font-semibold">
+                            <X className="w-3.5 h-3.5 flex-shrink-0" />
+                            <span>{targetHospName} was unable to fulfill this request at this time.</span>
+                          </span>
+                        )}
+                        {s === 'cancelled' && (
+                          <span className="text-slate-500 italic">
+                            This resource request was cancelled by our hospital.
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Action Buttons for Requester */}
+                      <div className="flex items-center justify-between pt-1">
+                        {s === 'pending' && (
+                          <button
+                            onClick={() => handleUpdateTransferStatus(t._id!, 'Cancelled')}
+                            className="px-3 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 font-bold text-xs cursor-pointer transition"
+                          >
+                            Cancel Request
+                          </button>
+                        )}
+
+                        {s === 'in transit' && (
+                          <button
+                            onClick={() => handleUpdateTransferStatus(t._id!, 'Delivered')}
+                            className="w-full px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Confirm Delivered & Restocked</span>
+                          </button>
+                        )}
+
+                        {s === 'accepted' && (
+                          <span className="text-[11px] text-emerald-700 font-bold italic">
+                            Waiting for donor hospital to dispatch shipment...
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB: RESOURCE REQUESTS (INCOMING REQUESTS FROM OTHER HOSPITALS) */}
+      {/* ========================================================= */}
+      {activeTab === 'resource-requests' && (
+        <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-indigo-100 text-indigo-700">
+                  <ArrowRightLeft className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-base text-[#0f2b48]">
+                    Resource Requests (Received from Other Hospitals)
+                  </h3>
+                  <p className="text-slate-500 text-xs mt-0.5">
+                    Other hospitals in Chennai requesting supplies or equipment from <strong>{hospital?.name || currentHospitalId}</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <span className="px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-xs self-start sm:self-auto">
+              {incomingRequests.length} Total Requests
+            </span>
+          </div>
+
+          {/* Simple Explanation Note */}
+          <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl text-xs text-indigo-900 flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-indigo-700 flex-shrink-0 mt-0.5" />
+            <div>
+              <strong className="block font-bold">Incoming Resource Requests Workflow</strong>
+              <p className="text-indigo-800 mt-0.5 leading-relaxed">
+                When another hospital needs resources and sends a request to your facility, review the details below. Click <strong>Accept</strong> to approve and prepare dispatch, or <strong>Reject</strong> if your current capacity cannot accommodate the transfer.
+              </p>
+            </div>
+          </div>
+
+          {/* Status Filter Tabs */}
+          <div className="flex overflow-x-auto gap-1.5 pb-1 text-xs">
+            {[
+              { id: 'all', label: `All (${incomingRequests.length})` },
+              {
+                id: 'pending',
+                label: `Pending Review (${incomingRequests.filter((r) => (r.status || '').toLowerCase() === 'pending').length})`,
+              },
+              {
+                id: 'accepted',
+                label: `Accepted (${incomingRequests.filter((r) => (r.status || '').toLowerCase() === 'accepted').length})`,
+              },
+              {
+                id: 'in transit',
+                label: `In Transit (${incomingRequests.filter((r) => (r.status || '').toLowerCase() === 'in transit').length})`,
+              },
+              {
+                id: 'delivered',
+                label: `Delivered (${incomingRequests.filter((r) => (r.status || '').toLowerCase() === 'delivered').length})`,
+              },
+              {
+                id: 'rejected',
+                label: `Rejected (${incomingRequests.filter((r) => (r.status || '').toLowerCase() === 'rejected').length})`,
+              },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setIncomingFilter(f.id)}
+                className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                  incomingFilter === f.id
+                    ? 'bg-indigo-700 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Incoming Cards List */}
+          {(() => {
+            const filtered = incomingRequests.filter((t) => {
+              if (incomingFilter === 'all') return true;
+              return (t.status || '').toLowerCase() === incomingFilter;
+            });
+
+            if (filtered.length === 0) {
+              return (
+                <div className="p-12 text-center bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <span className="text-3xl">🤝</span>
+                  <h4 className="font-bold text-slate-800 text-sm">No incoming resource requests</h4>
+                  <p className="text-slate-500 text-xs max-w-md mx-auto">
+                    When partner hospitals request emergency supplies from our facility, they will appear here with instant Accept / Reject controls.
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filtered.map((t) => {
+                  const status = t.status || 'Pending';
+                  const s = status.toLowerCase();
+                  const requesterName =
+                    t.requester_hospital_name ||
+                    t.to_hospital_name ||
+                    'Requesting Hospital';
+
+                  return (
+                    <div
+                      key={t._id}
+                      className="bg-white rounded-2xl border border-slate-300 p-4 shadow-xs space-y-3.5 hover:border-indigo-400 transition"
+                    >
+                      {/* Top Header */}
+                      <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-100">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                            REQUEST FROM
+                          </span>
+                          <h4 className="font-black text-sm text-slate-900 mt-0.5">
+                            {requesterName}
+                          </h4>
+                        </div>
+
+                        {/* Status Badge */}
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-black capitalize flex items-center gap-1.5 ${
+                            s === 'accepted'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : s === 'in transit'
+                              ? 'bg-sky-100 text-sky-800 border border-sky-300'
+                              : s === 'delivered'
+                              ? 'bg-teal-100 text-teal-800 border border-teal-300'
+                              : s === 'rejected'
+                              ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                              : 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
+                          }`}
+                        >
+                          <span>{status}</span>
+                        </span>
+                      </div>
+
+                      {/* Card Details Grid */}
+                      <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <div>
+                          <span className="text-slate-500 text-[10px] font-bold block uppercase tracking-wider">
+                            RESOURCE
+                          </span>
+                          <strong className="text-sm text-slate-900 font-extrabold">
+                            {t.resource_type || 'Oxygen Cylinders'}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-500 text-[10px] font-bold block uppercase tracking-wider">
+                            QUANTITY
+                          </span>
+                          <strong className="text-base text-indigo-900 font-black">
+                            {t.quantity} Units
+                          </strong>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-500 text-[10px] font-bold block uppercase tracking-wider">
+                            PRIORITY
+                          </span>
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded-full font-bold text-[10px] uppercase mt-0.5 ${
+                              (t.priority || '').toUpperCase() === 'URGENT' ||
+                              (t.priority || '').toUpperCase() === 'HIGH'
+                                ? 'bg-red-100 text-red-800 border border-red-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300'
+                            }`}
+                          >
+                            {t.priority || 'High'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="text-slate-500 text-[10px] font-bold block uppercase tracking-wider">
+                            REQUESTED ON
+                          </span>
+                          <span className="text-slate-700 font-medium text-xs mt-0.5 block">
+                            {t.requested_on || '10 October 2026'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {t.reason && (
+                        <p className="text-[11px] text-slate-500 italic bg-white p-2 rounded-lg border border-slate-100">
+                          Note from requester: &quot;{t.reason}&quot;
+                        </p>
+                      )}
+
+                      {/* Action Buttons (Accept / Reject / In Transit / Delivered) */}
+                      <div className="pt-1">
+                        {/* 1. Pending: Accept / Reject Flow */}
+                        {s === 'pending' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => handleUpdateTransferStatus(t._id!, 'Accepted')}
+                              className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5 cursor-pointer transition active:scale-95"
+                            >
+                              <Check className="w-4 h-4" />
+                              <span>Accept</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleUpdateTransferStatus(t._id!, 'Rejected')}
+                              className="px-3.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md shadow-rose-600/20 flex items-center justify-center gap-1.5 cursor-pointer transition active:scale-95"
+                            >
+                              <X className="w-4 h-4" />
+                              <span>Reject</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* 2. Accepted: Dispatch / In Transit Flow */}
+                        {s === 'accepted' && (
+                          <button
+                            onClick={() => handleUpdateTransferStatus(t._id!, 'In Transit')}
+                            className="w-full px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs shadow-md shadow-sky-600/20 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+                          >
+                            <Truck className="w-4 h-4" />
+                            <span>Dispatch / Mark In Transit</span>
+                          </button>
+                        )}
+
+                        {/* 3. In Transit: Mark Delivered */}
+                        {s === 'in transit' && (
+                          <button
+                            onClick={() => handleUpdateTransferStatus(t._id!, 'Delivered')}
+                            className="w-full px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-xs shadow-md shadow-teal-600/20 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Mark Delivered</span>
+                          </button>
+                        )}
+
+                        {s === 'delivered' && (
+                          <div className="p-2 text-center rounded-xl bg-teal-50 border border-teal-200 text-teal-800 font-bold text-xs flex items-center justify-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-teal-600" />
+                            <span>Transfer Completed & Delivered</span>
+                          </div>
+                        )}
+
+                        {s === 'rejected' && (
+                          <div className="p-2 text-center rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-bold text-xs">
+                            Request Declined
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB: AI REBALANCE */}
+      {/* ========================================================= */}
+      {activeTab === 'rebalance' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-sky-50 border border-sky-200 rounded-2xl flex items-start justify-between gap-3 text-xs">
+            <div>
+              <strong className="text-sky-950 font-bold text-sm block">
+                Cross-Hospital AI Rebalance System
+              </strong>
+              <p className="text-sky-800 mt-0.5">
+                Predictive shortage mitigation & dynamic inter-facility surplus rebalancing across Chennai. Click <strong>&quot;Request Resource&quot;</strong> on any recommendation to dispatch a resource request to partner hubs.
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveTab('my-requests')}
+              className="px-3 py-1.5 rounded-lg bg-sky-700 text-white font-bold whitespace-nowrap cursor-pointer hover:bg-sky-800"
+            >
+              View My Requests
+            </button>
+          </div>
+          <CrossHospitalRebalancePage />
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB: NOTIFICATIONS */}
+      {/* ========================================================= */}
+      {activeTab === 'notifications' && (
+        <div className="bg-white rounded-2xl border border-slate-300 p-5 shadow-xs space-y-4 text-xs">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+            <div>
+              <h3 className="font-extrabold text-base text-[#0f2b48]">Hospital Notifications & Alerts</h3>
+              <p className="text-slate-500 text-xs mt-0.5">
+                Real-time activity log for {hospital?.name || currentHospitalId}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            {[
+              {
+                title: 'Live MongoDB Connection Verified',
+                desc: 'Cluster connected to medirebal. Synchronization active.',
+                time: 'Just now',
+                type: 'info',
+              },
+              {
+                title: 'Cross-Hospital Resource Coordination',
+                desc: `${myRequests.length} outgoing requests and ${incomingRequests.length} incoming requests tracked.`,
+                time: 'Today',
+                type: 'transfer',
+              },
+              {
+                title: 'Emergency Admissions Gateway',
+                desc: `${emergencyReqs.length} triage admissions monitored.`,
+                time: 'Today',
+                type: 'emergency',
+              },
+            ].map((n, i) => (
+              <div
+                key={i}
+                className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-start gap-3 text-xs"
+              >
+                <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 flex-shrink-0">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <strong className="font-bold text-slate-900">{n.title}</strong>
+                    <span className="text-[10px] text-slate-400">{n.time}</span>
+                  </div>
+                  <p className="text-slate-600 mt-0.5">{n.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB: PROFILE */}
+      {/* ========================================================= */}
+      {activeTab === 'profile' && (
+        <div className="bg-white rounded-2xl border border-slate-300 p-6 shadow-xs space-y-6 text-xs max-w-3xl mx-auto">
+          <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
+            <div className="w-12 h-12 rounded-2xl bg-[#0f2b48] text-white flex items-center justify-center font-black text-lg">
+              {hospital?.name?.charAt(0) || 'H'}
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-slate-900">
+                {hospital?.name || 'Hospital Administration'}
+              </h3>
+              <p className="text-slate-500 text-xs">
+                Hospital ID: <strong className="text-slate-800 font-mono">{currentHospitalId}</strong> &bull; District: Chennai
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                Administrator
+              </span>
+              <p className="font-bold text-slate-900 text-sm">
+                {user?.name || 'Hospital Administrator'}
+              </p>
+              <p className="text-slate-500 text-xs">{user?.email || 'admin@medirebal.org'}</p>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                Role & Privileges
+              </span>
+              <p className="font-bold text-emerald-700 text-sm">HOSPITAL_ADMIN</p>
+              <p className="text-slate-500 text-xs">Full facility resource & dispatch management</p>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                Physical Location
+              </span>
+              <p className="font-bold text-slate-900 text-sm">{hospital?.area || 'Chennai'}, Chennai</p>
+              <p className="text-slate-500 text-xs">{hospital?.address}</p>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <span className="text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                Emergency Hotline
+              </span>
+              <p className="font-bold text-red-700 text-sm">{hospital?.phone || '+91 44 2530 5000'}</p>
+              <p className="text-slate-500 text-xs">24x7 Ambulance & ICU dispatch line</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL: + NEW RESOURCE REQUEST MODAL */}
+      {/* ========================================================= */}
+      {showNewRequestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-300 shadow-2xl max-w-lg w-full p-6 space-y-4 text-xs animate-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-violet-100 text-violet-700">
+                  <Send className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="font-extrabold text-base text-[#0f2b48]">
+                    Create Resource Request
+                  </h3>
+                  <p className="text-slate-500 text-xs">
+                    From <strong>{hospital?.name || currentHospitalId}</strong> to partner hospital
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowNewRequestModal(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleCreateResourceRequest} className="space-y-3.5">
+              {/* Resource Type */}
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  Resource Required *
+                </label>
+                <select
+                  required
+                  value={newRequestForm.resource_type}
+                  onChange={(e) =>
+                    setNewRequestForm({ ...newRequestForm, resource_type: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-xs"
+                >
+                  <option value="Oxygen Cylinders">Oxygen Cylinders</option>
+                  <option value="ICU Beds">ICU Beds</option>
+                  <option value="Ventilators">Ventilators</option>
+                  <option value="Emergency Beds">Emergency Beds</option>
+                  <option value="Ambulances">Ambulances</option>
+                  <option value="Other required resources">Other required resources</option>
+                </select>
+              </div>
+
+              {/* Quantity */}
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  Quantity *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={newRequestForm.quantity}
+                  onChange={(e) =>
+                    setNewRequestForm({
+                      ...newRequestForm,
+                      quantity: Math.max(1, parseInt(e.target.value) || 1),
+                    })
+                  }
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-xs"
+                />
+              </div>
+
+              {/* Requested From (Target Hospital) */}
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  Requested From (Target Hospital) *
+                </label>
+                <select
+                  required
+                  value={newRequestForm.target_hospital_id}
+                  onChange={(e) =>
+                    setNewRequestForm({ ...newRequestForm, target_hospital_id: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-xs"
+                >
+                  {allHospitals
+                    .filter((h) => h.hospital_id !== currentHospitalId)
+                    .map((h) => (
+                      <option key={h.hospital_id} value={h.hospital_id}>
+                        {h.hospital_id} - {h.name} ({h.area})
+                      </option>
+                    ))}
+                  {allHospitals.length === 0 && (
+                    <>
+                      <option value="H002">H002 - Anna Nagar Hospital</option>
+                      <option value="H003">H003 - Adyar Hospital</option>
+                      <option value="H004">H004 - Velachery Hospital</option>
+                      <option value="H005">H005 - Tambaram Hospital</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* Priority */}
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  Priority Level *
+                </label>
+                <select
+                  value={newRequestForm.priority}
+                  onChange={(e) =>
+                    setNewRequestForm({ ...newRequestForm, priority: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold text-xs"
+                >
+                  <option value="High">High</option>
+                  <option value="Urgent">Urgent</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+              </div>
+
+              {/* Reason / Notes */}
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">
+                  Reason / Clinical Justification (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Oxygen reserve dipped below safe operational buffer"
+                  value={newRequestForm.reason}
+                  onChange={(e) =>
+                    setNewRequestForm({ ...newRequestForm, reason: e.target.value })
+                  }
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs"
+                />
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowNewRequestModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 font-bold text-slate-700 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-violet-700 hover:bg-violet-800 text-white font-extrabold shadow-md shadow-violet-700/25 cursor-pointer flex items-center gap-1.5 active:scale-95 transition"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send Request</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

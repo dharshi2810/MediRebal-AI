@@ -20,6 +20,7 @@ interface PublicHomePageProps {
   onOpenEmergency: (resourceType?: string, targetHospitalId?: string) => void;
   onSelectHospital: (hospital: Hospital) => void;
   onBookAppointment: (hospital: Hospital) => void;
+  onOpenHospitalAdmin?: () => void;
 }
 
 export const PublicHomePage: React.FC<PublicHomePageProps> = ({
@@ -29,6 +30,7 @@ export const PublicHomePage: React.FC<PublicHomePageProps> = ({
   onOpenEmergency,
   onSelectHospital,
   onBookAppointment,
+  onOpenHospitalAdmin,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [resourceFilter, setResourceFilter] = useState<'all' | 'oxygen' | 'beds' | 'icu' | 'doctors'>('all');
@@ -408,6 +410,26 @@ export const PublicHomePage: React.FC<PublicHomePageProps> = ({
           </div>
         )}
       </div>
+
+      {/* Footer */}
+      <footer className="pt-10 pb-6 border-t border-slate-200 text-center text-xs text-slate-500 space-y-2">
+        <p className="font-semibold text-slate-700">
+          MEDIREBAL AI &bull; Greater Chennai District Healthcare Coordination Network
+        </p>
+        <p className="text-[11px] text-slate-400">
+          Real-time bed availability, oxygen monitoring, and doctor appointment scheduling.
+        </p>
+        {onOpenHospitalAdmin && (
+          <div className="pt-2">
+            <button
+              onClick={onOpenHospitalAdmin}
+              className="text-[11px] text-slate-400 hover:text-slate-700 underline transition cursor-pointer"
+            >
+              🔒 Medical Staff & Hospital Admin Portal (/hospital/login)
+            </button>
+          </div>
+        )}
+      </footer>
     </div>
   );
 };
