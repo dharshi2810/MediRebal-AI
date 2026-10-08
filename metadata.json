@@ -1,0 +1,6 @@
+{
+  "name": "MediRebal AI - Cross-Hospital Resource Rebalancing",
+  "description": "AI-powered district-level healthcare resource coordination, shortage prediction, and cross-hospital emergency transfer platform.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

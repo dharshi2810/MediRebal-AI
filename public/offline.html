@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediRebal AI - Offline</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #f8fafc;
+      color: #1e293b;
+      text-align: center;
+    }
+    .card {
+      background: white;
+      padding: 32px 24px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.06);
+      max-width: 400px;
+      width: 100%;
+    }
+    .icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 20px;
+      margin-bottom: 8px;
+      color: #0f172a;
+    }
+    p {
+      font-size: 14px;
+      color: #64748b;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #0284c7;
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .emergency {
+      margin-top: 16px;
+      padding: 12px;
+      background: #fef2f2;
+      border: 1px solid #fee2e2;
+      border-radius: 8px;
+      color: #dc2626;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">📡</div>
+    <h1>You are currently offline</h1>
+    <p>MediRebal AI cached views are available, but real-time hospital resource sync requires an active internet connection.</p>
+    <a href="/" class="btn" onclick="window.location.reload(); return false;">Retry Connection</a>
+    <div class="emergency">
+      🚨 For immediate life-threatening emergency in Chennai, dial <strong>108</strong> (Ambulance) or <strong>102</strong>.
+    </div>
+  </div>
+</body>
+</html>

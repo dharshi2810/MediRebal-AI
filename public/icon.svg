@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+    <linearGradient id="crossGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#f0f9ff" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#082f49" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  
+  <!-- App Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)" />
+  
+  <!-- Subtle Rings -->
+  <circle cx="256" cy="256" r="190" stroke="#38bdf8" stroke-width="4" stroke-opacity="0.25" fill="none" />
+  <circle cx="256" cy="256" r="145" stroke="#7dd3fc" stroke-width="3" stroke-opacity="0.2" fill="none" />
+  
+  <!-- Cross with rebalancing arrows -->
+  <g filter="url(#shadow)">
+    <!-- Vertical bar -->
+    <rect x="216" y="116" width="80" height="280" rx="20" fill="url(#crossGrad)" />
+    <!-- Horizontal bar -->
+    <rect x="116" y="216" width="280" height="80" rx="20" fill="url(#crossGrad)" />
+    <!-- Center pulse node -->
+    <circle cx="256" cy="256" r="32" fill="#0284c7" />
+    <path d="M244 256 L253 246 L259 266 L268 256" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+
+  <!-- Rebalance orbital indicator -->
+  <path d="M140 160 A 170 170 0 0 1 372 160" fill="none" stroke="#22d3ee" stroke-width="8" stroke-linecap="round" stroke-dasharray="14 10" />
+  <polygon points="380,165 372,145 362,165" fill="#22d3ee" />
+
+  <path d="M372 352 A 170 170 0 0 1 140 352" fill="none" stroke="#38bdf8" stroke-width="8" stroke-linecap="round" stroke-dasharray="14 10" />
+  <polygon points="132,347 140,367 150,347" fill="#38bdf8" />
+</svg>
